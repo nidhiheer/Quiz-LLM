@@ -37,19 +37,13 @@ def setup_driver():
     options.add_experimental_option('excludeSwitches', ['enable-logging'])
     
     try:
-        # Use system ChromeDriver or install manually
-        driver = webdriver.Chrome(options=options)
+        driver_path = ChromeDriverManager().install()
+        service = Service(driver_path)
+        driver = webdriver.Chrome(service=service, options=options)
         return driver
     except Exception as e:
         logging.error(f"ChromeDriver setup failed: {str(e)}")
-        # Fallback: try with manual ChromeDriver path
-        try:
-            service = Service('/usr/bin/chromedriver')
-            driver = webdriver.Chrome(service=service, options=options)
-            return driver
-        except Exception as e2:
-            logging.error(f"Fallback ChromeDriver also failed: {str(e2)}")
-            raise
+        raise
 
 def scrape_quiz_page(url):
     driver = setup_driver()
