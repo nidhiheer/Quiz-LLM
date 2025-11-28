@@ -33,10 +33,36 @@ def setup_driver():
     options.add_argument('--window-size=1920,1080')
     options.add_experimental_option('excludeSwitches', ['enable-logging'])
     
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-    return driver
-
+    # Fix ChromeDriver installation and permissions
+    try:
+        # Get the ChromeDriver path and ensure it's executable
+        driver_path = ChromeDriverManager().install()
+        
+        # Make sure the ChromeDriver binary is executable
+        import os
+        import stat
+        chromedriver_binary = driver_path
+        if not os.path.exists(chromedriver_binary):
+            # Try to find the actual binary in the directory
+            driver_dir = os.path.dirname(driver_path)
+            for file in os.listdir(driver_dir):
+                if file.startswith('chromedriver') and not file.endswith('.notice'):
+                    chromedriver_binary = os.path.join(driver_dir, file)
+                    break
+        
+        # Set executable permissions
+        if os.path.exists(chromedriver_binary):
+            st = os.stat(chromedriver_binary)
+            os.chmod(chromedriver_binary, st.st_mode | stat.S_IEXEC)
+            logging.info(f"ChromeDriver path: {chromedriver_binary}")
+        
+        service = Service(driver_path)
+        driver = webdriver.Chrome(service=service, options=options)
+        return driver
+        
+    except Exception as e:
+        logging.error(f"ChromeDriver setup failed: {str(e)}")
+        raise e
 def scrape_quiz_page(url):
     driver = setup_driver()
     try:
