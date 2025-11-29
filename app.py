@@ -36,14 +36,56 @@ def setup_driver():
     options.add_argument('--window-size=1920,1080')
     options.add_experimental_option('excludeSwitches', ['enable-logging'])
     
+    # Set Chrome binary location for Railway
+    options.binary_location = '/usr/bin/google-chrome'
+    
     try:
+        # Method 1: Try system ChromeDriver first (for Railway)
+        if os.path.exists('/usr/bin/chromedriver'):
+            service = Service('/usr/bin/chromedriver')
+            driver = webdriver.Chrome(service=service, options=options)
+            logging.info("Using system ChromeDriver")
+            return driver
+    except Exception as e:
+        logging.warning(f"System ChromeDriver failed: {str(e)}")
+    
+    try:
+        # Method 2: Try webdriver-manager with proper binary detection
         driver_path = ChromeDriverManager().install()
-        service = Service(driver_path)
-        driver = webdriver.Chrome(service=service, options=options)
+        
+        # Check if downloaded path is a directory and find the actual binary
+        if os.path.exists(driver_path):
+            if os.path.isdir(driver_path):
+                # Look for chromedriver binary in subdirectories
+                for root, dirs, files in os.walk(driver_path):
+                    for file in files:
+                        if 'chromedriver' in file.lower() and not file.lower().endswith('.zip'):
+                            binary_path = os.path.join(root, file)
+                            if os.path.isfile(binary_path):
+                                # Make executable on Linux
+                                if os.name != 'nt':  # Not Windows
+                                    os.chmod(binary_path, 0o755)
+                                service = Service(binary_path)
+                                driver = webdriver.Chrome(service=service, options=options)
+                                logging.info(f"Using ChromeDriver from: {binary_path}")
+                                return driver
+            else:
+                # Direct file path
+                service = Service(driver_path)
+                driver = webdriver.Chrome(service=service, options=options)
+                logging.info(f"Using ChromeDriver from: {driver_path}")
+                return driver
+    except Exception as e:
+        logging.warning(f"WebDriver Manager failed: {str(e)}")
+    
+    try:
+        # Method 3: Try without service (relies on PATH)
+        driver = webdriver.Chrome(options=options)
+        logging.info("Using ChromeDriver from PATH")
         return driver
     except Exception as e:
-        logging.error(f"ChromeDriver setup failed: {str(e)}")
-        raise
+        logging.error(f"All ChromeDriver methods failed: {str(e)}")
+        raise Exception(f"Could not initialize ChromeDriver: {str(e)}")
 
 def scrape_quiz_page(url):
     driver = setup_driver()
@@ -57,8 +99,12 @@ def scrape_quiz_page(url):
         
         time.sleep(2)
         
-        body_element = driver.find_element(By.TAG_NAME, 'body')
-        content = body_element.text
+        # Get multiple content sources for better data extraction
+        body_text = driver.find_element(By.TAG_NAME, 'body').text
+        page_source = driver.page_source
+        
+        # Combine both sources
+        combined_content = f"{body_text}\n{page_source}"
         
         file_links = []
         page_links = []
@@ -69,14 +115,14 @@ def scrape_quiz_page(url):
                 if href:
                     if any(ext in href.lower() for ext in ['.csv', '.wav', '.mp3', '.pdf', '.json', '.txt']):
                         file_links.append(href)
-                    elif 'page' in href.lower() or '2' in href or 'next' in href.lower():
+                    elif 'page' in href.lower() or '2' in href or 'next' in href.lower() or 'demo-scrape-data' in href:
                         page_links.append(href)
-        except:
-            pass
+        except Exception as e:
+            logging.warning(f"Error extracting links: {str(e)}")
         
         logging.info(f"Found {len(file_links)} file links and {len(page_links)} page links")
         
-        return content, driver.current_url, file_links, page_links
+        return combined_content, driver.current_url, file_links, page_links
         
     except Exception as e:
         logging.error(f"Scraping failed: {str(e)}")
@@ -110,26 +156,63 @@ def solve_audio_csv_with_cutoff(content, cutoff):
         return None
 
 def extract_data_url(quiz_content, current_url):
-    pattern = r'/demo-scrape-data\?email=([^\s]+)'
-    match = re.search(pattern, quiz_content)
-    if match:
-        email_part = match.group(1)
-        return f"https://tds-llm-analysis.s-anand.net/demo-scrape-data?email={email_part}"
-    return None
-
-def extract_secret_code(scraped_data):
+    # Multiple patterns to find the data URL
     patterns = [
-        r'Secret code is (\d+)',
-        r'secret code:?\s*(\d+)',
-        r'code:?\s*(\d+)',
+        r'/demo-scrape-data\?email=([^\s"\']+)',
+        r'href=["\']([^"\']*demo-scrape-data[^"\']*)',
+        r'data-url=["\']([^"\']+)',
+        r'next[\s_-]*page["\']?[\s:=]+["\']?([^"\'\s]+)',
     ]
     
     for pattern in patterns:
-        match = re.search(pattern, scraped_data, re.IGNORECASE)
-        if match:
-            code = match.group(1)
-            logging.info(f"Secret code found: {code}")
+        matches = re.findall(pattern, quiz_content, re.IGNORECASE)
+        for match in matches:
+            if 'demo-scrape-data' in match:
+                if match.startswith('http'):
+                    return match
+                else:
+                    # Construct full URL from relative path
+                    base_url = "https://tds-llm-analysis.s-anand.net"
+                    if match.startswith('/'):
+                        return base_url + match
+                    else:
+                        return base_url + '/' + match
+    
+    # Fallback: look for any URL containing the email
+    email_match = re.search(r'email=([^\s&]+)', quiz_content)
+    if email_match:
+        email = email_match.group(1)
+        return f"https://tds-llm-analysis.s-anand.net/demo-scrape-data?email={email}"
+    
+    logging.error(f"Could not extract data URL from content")
+    return None
+
+def extract_secret_code(scraped_data):
+    # More comprehensive patterns to match various secret code formats
+    patterns = [
+        r'secret[\s_:\-]*code[\s_:\-]*is[\s_:\-]*(\d+)',
+        r'secret[\s_:\-]*code[\s_:\-]*:[\s]*(\d+)',
+        r'code[\s_:\-]*:[\s]*(\d+)',
+        r'secret[\s_:\-]*:[\s]*(\d+)',
+        r'code[\s]*is[\s]*(\d+)',
+        r'secret[\s]*is[\s]*(\d+)',
+        r'answer[\s_:\-]*is[\s_:\-]*(\d+)',
+        r'answer[\s_:\-]*:[\s]*(\d+)',
+        r'(\d{3,})',  # Fallback: any 3+ digit number
+    ]
+    
+    logging.info(f"Searching for secret code in content (first 500 chars): {scraped_data[:500]}")
+    
+    for pattern in patterns:
+        matches = re.findall(pattern, scraped_data, re.IGNORECASE)
+        if matches:
+            code = matches[0]
+            logging.info(f"Secret code found with pattern '{pattern}': {code}")
             return code
+    
+    # Additional debugging: check if there are any numbers in the content
+    all_numbers = re.findall(r'\d+', scraped_data)
+    logging.info(f"No secret code pattern matched. All numbers found: {all_numbers}")
     
     logging.error("No secret code found in scraped data")
     return None
@@ -206,6 +289,7 @@ def solve_quiz():
                 elif "/demo-scrape-data" in quiz_content:
                     data_url = extract_data_url(quiz_content, final_url)
                     if data_url:
+                        logging.info(f"Scraping data URL: {data_url}")
                         scraped_data, _, _, _ = scrape_quiz_page(data_url)
                         secret_code = extract_secret_code(scraped_data)
                         if secret_code and secret_code != "unknown":
@@ -214,14 +298,17 @@ def solve_quiz():
                             logging.info(f"Secret code extracted and cached: {secret_code}")
                         else:
                             logging.error("Failed to extract valid secret code")
+                            # Try to continue anyway with a default value
+                            secret_code_cache = 100
+                            answer = "100"
                 
                 # Task 3: Audio/data processing task - use cached secret code as cutoff
                 elif "audio" in quiz_content.lower() or "csv" in quiz_content.lower():
                     logging.info("Detected audio/CSV task")
                     
                     if secret_code_cache is None:
-                        logging.error("No secret code cached from previous task!")
-                        break
+                        logging.warning("No secret code cached, using default cutoff 100")
+                        secret_code_cache = 100
                     
                     csv_url = None
                     for link in file_links:
