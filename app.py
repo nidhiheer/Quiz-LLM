@@ -198,7 +198,7 @@ def extract_secret_code(scraped_data):
         r'secret[\s]*is[\s]*(\d+)',
         r'answer[\s_:\-]*is[\s_:\-]*(\d+)',
         r'answer[\s_:\-]*:[\s]*(\d+)',
-        r'(\d{3,})',  # Fallback: any 3+ digit number
+        r'(\d{3,})', 
     ]
     
     logging.info(f"Searching for secret code in content (first 500 chars): {scraped_data[:500]}")
@@ -210,7 +210,7 @@ def extract_secret_code(scraped_data):
             logging.info(f"Secret code found with pattern '{pattern}': {code}")
             return code
     
-    # Additional debugging: check if there are any numbers in the content
+    #  check if there are any numbers in the content
     all_numbers = re.findall(r'\d+', scraped_data)
     logging.info(f"No secret code pattern matched. All numbers found: {all_numbers}")
     
@@ -330,7 +330,7 @@ def solve_quiz():
                     
                     if result.get('correct'):
                         current_url = result.get('url')
-                        logging.info(f"✅ Correct! Next: {current_url}")
+                        logging.info(f"Correct!")
                         if not current_url:
                             return jsonify({
                                 "status": "success",
@@ -338,7 +338,7 @@ def solve_quiz():
                                 "tasks_completed": task_count
                             }), 200
                     else:
-                        logging.warning(f"❌ Incorrect: {result.get('reason', 'No reason provided')}")
+                        logging.warning(f"Incorrect: {result.get('reason', 'No reason provided')}")
                         current_url = result.get('url')
                         if not current_url:
                             break
