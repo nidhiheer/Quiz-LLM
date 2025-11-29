@@ -544,7 +544,7 @@ def home():
         },
         "timeouts": {
             "per_task": "180 seconds",
-            "overall": "300 seconds"
+            "overall": "1800 seconds"
         }
     }), 200
 
