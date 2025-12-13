@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  quiz-solver:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - GROK_API_KEY=${GROK_API_KEY}
+      - YOUR_EMAIL=${YOUR_EMAIL}
+      - YOUR_SECRET=${YOUR_SECRET}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

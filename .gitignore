@@ -1,0 +1,50 @@
+﻿# API Keys & Secrets
+.env
+.env.local
+.env.*.local
+*.env
+.env.example
+secrets/
+credentials/
+keys/
+config.json
+firebase.json
+serviceAccount.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+env/
+.venv/
+ENV/
+pip-wheel-metadata/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+.DS_Store
+
+# System
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
